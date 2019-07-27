@@ -1802,6 +1802,49 @@ _mysql_ConnectionObject_read_query_result(
     Py_RETURN_NONE;
 }
 
+#if MYSQL_VERSION_ID >= 50707
+static char _mysql_ConnectionObject_get_session_track_gtids__doc__[] =
+"If the `session_track_gtids` system variable (global or session) is \n\
+set to something other than 'OFF' and the client flag `SESSION_TRACK`` \n\
+is enabled, you can call this method to retrieve all GTIDs created by \n\
+the session. Returns a list of unicode strings.\n\
+";
+
+static PyObject *
+_mysql_ConnectionObject_get_session_track_gtids(
+    _mysql_ConnectionObject *self,
+    PyObject *noargs)
+{
+    int r;
+    const char *data;
+    size_t length;
+
+    Py_BEGIN_ALLOW_THREADS
+    r = mysql_session_track_get_first(&(self->connection), SESSION_TRACK_GTIDS, &data, &length);
+    Py_END_ALLOW_THREADS
+
+    PyObject *gtids = PyList_New(0);
+
+    while (r == 0)
+    {
+        PyObject *gtid = PyUnicode_DecodeUTF8(data, length, NULL);
+        if (gtid == NULL)
+        {
+            Py_DECREF(gtids);
+            return NULL;
+        }
+
+        PyList_Append(gtids, gtid);
+
+        Py_BEGIN_ALLOW_THREADS
+        r = mysql_session_track_get_next(&(self->connection), SESSION_TRACK_GTIDS, &data, &length);
+        Py_END_ALLOW_THREADS
+    }
+
+    return gtids;
+}
+#endif
+
 static char _mysql_ConnectionObject_select_db__doc__[] =
 "Causes the database specified by db to become the default\n\
 (current) database on the connection specified by mysql. In subsequent\n\
@@ -2222,6 +2265,14 @@ static PyMethodDef _mysql_ConnectionObject_methods[] = {
         METH_NOARGS,
         _mysql_ConnectionObject_read_query_result__doc__,
     },
+#if MYSQL_VERSION_ID >= 50707
+    {
+        "get_session_track_gtids",
+        (PyCFunction)_mysql_ConnectionObject_get_session_track_gtids,
+        METH_NOARGS,
+        _mysql_ConnectionObject_get_session_track_gtids__doc__,
+    },
+#endif
     {
         "select_db",
         (PyCFunction)_mysql_ConnectionObject_select_db,
